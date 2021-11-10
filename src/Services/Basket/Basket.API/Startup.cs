@@ -1,5 +1,6 @@
 using Basket.API.GrpcServices;
 using Basket.API.Repository;
+using MassTransit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
@@ -11,6 +12,7 @@ using Microsoft.OpenApi.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using static Discount.Grpc.Protos.DiscountProtoService;
 
@@ -28,16 +30,33 @@ namespace Basket.API
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddStackExchangeRedisCache(option =>
-            {
-                option.Configuration = Configuration.GetValue<string>("CacheSettings:ConnectionString");
-            });
-            services.AddScoped<IBasketRepository, BasketRepository>();
 
+            // MassTransit-RabbitMQ Configuration
+            services.AddMassTransit(config =>
+            {
+                config.UsingRabbitMq((ctx, cfg) =>
+                {
+                    //username,pass,server,port
+                    // portname rabit ra az docker baiad zad na management 
+                    cfg.Host(Configuration.GetValue<string>("EventBusSettings:HostAddress"));
+                });
+            });
+            services.AddMassTransitHostedService();
+
+            // Grpc
             services.AddGrpcClient<DiscountProtoServiceClient>(o =>
                      o.Address = new Uri(Configuration["GrpcSettings:DiscountUrl"]));
             services.AddScoped<DiscountGrpcService>();
 
+            // Redis Configuration
+            services.AddStackExchangeRedisCache(option =>
+            {
+                option.Configuration = Configuration.GetValue<string>("CacheSettings:ConnectionString");
+            });
+            
+            // General
+            services.AddScoped<IBasketRepository, BasketRepository>();
+            services.AddAutoMapper(Assembly.GetExecutingAssembly());
             services.AddControllers();
             services.AddSwaggerGen(c =>
             {
